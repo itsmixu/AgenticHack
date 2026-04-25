@@ -10,6 +10,7 @@ public class NPC : MonoBehaviour
     [SerializeField] private ItemData flower;
     [SerializeField] private GameObject graveSpot;
     [SerializeField] private string voiceId;
+    [SerializeField] private string npcId;
 
     [Header("Dialogue")]
     [SerializeField] private bool isDaisy = false;
@@ -46,6 +47,7 @@ public class NPC : MonoBehaviour
 
     [HideInInspector] public bool playerNearby = false;
     public string VoiceId => voiceId;
+    public string NpcId => string.IsNullOrWhiteSpace(npcId) ? name : npcId;
 
     private void OnTriggerEnter2D(Collider2D other)
     {

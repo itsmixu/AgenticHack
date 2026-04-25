@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.Networking;
 
 public class PlayerInteraction : MonoBehaviour
 {
@@ -6,6 +7,11 @@ public class PlayerInteraction : MonoBehaviour
 
     public NPC currentNPC;
     [SerializeField] private InteractionPopupUI interactionPopupUI;
+    [Header("Backend AI")]
+    [SerializeField] private bool useBackendAI = true;
+    [SerializeField] private string backendBaseUrl = "http://localhost:8000";
+    [SerializeField] private float requestTimeoutSeconds = 8f;
+    [SerializeField] private string playerId = "p1";
 
     private Inventory inventory;
     private bool isInteractionActive;
@@ -20,6 +26,17 @@ public class PlayerInteraction : MonoBehaviour
             Instance = this;
         else
             Destroy(gameObject);
+
+        if (string.IsNullOrWhiteSpace(playerId))
+        {
+            playerId = PlayerPrefs.GetString("player_id", string.Empty);
+            if (string.IsNullOrWhiteSpace(playerId))
+            {
+                playerId = System.Guid.NewGuid().ToString("N");
+                PlayerPrefs.SetString("player_id", playerId);
+                PlayerPrefs.Save();
+            }
+        }
 
         inventory = GetComponent<Inventory>();
     }
@@ -49,6 +66,9 @@ public class PlayerInteraction : MonoBehaviour
             interactionPopupUI.Show();
             interactionPopupUI.SetTurnState(true);
         }
+
+        if (useBackendAI)
+            StartCoroutine(CheckBackendHealth());
     }
 
     public void EndInteraction()
@@ -72,12 +92,14 @@ public class PlayerInteraction : MonoBehaviour
             return;
 
         float requestStartTime = Time.realtimeSinceStartup;
-        // API INTEGRATION POINT:
-        // Replace the local ProcessPlayerAction call below with your async API request.
-        // Send: NPC identity + PlayerActionType.Talk + message.
-        // Map API JSON response into NpcInteractionResponse, then pass it to ProcessNpcTurn.
-        NpcInteractionResponse response = currentNPC.ProcessPlayerAction(PlayerActionType.Talk, message, null);
-        StartCoroutine(ProcessNpcTurn(response, requestStartTime));
+        if (useBackendAI)
+        {
+            StartCoroutine(HandleBackendAction(PlayerActionType.Talk, message, null, requestStartTime));
+            return;
+        }
+
+        NpcInteractionResponse localResponse = currentNPC.ProcessPlayerAction(PlayerActionType.Talk, message, null);
+        StartCoroutine(ProcessNpcTurn(localResponse, requestStartTime));
     }
 
     public void SubmitGiveItem(string itemName)
@@ -110,14 +132,16 @@ public class PlayerInteraction : MonoBehaviour
             return;
         }
 
-        inventory.RemoveItem(itemToGive);
         float requestStartTime = Time.realtimeSinceStartup;
-        // API INTEGRATION POINT:
-        // Replace the local ProcessPlayerAction call below with your async API request.
-        // Send: NPC identity + PlayerActionType.GiveItem + item payload (item name/id).
-        // Map API JSON response into NpcInteractionResponse, then pass it to ProcessNpcTurn.
-        NpcInteractionResponse response = currentNPC.ProcessPlayerAction(PlayerActionType.GiveItem, null, itemToGive);
-        StartCoroutine(ProcessNpcTurn(response, requestStartTime));
+        if (useBackendAI)
+        {
+            StartCoroutine(HandleBackendAction(PlayerActionType.GiveItem, null, itemToGive, requestStartTime));
+            return;
+        }
+
+        inventory.RemoveItem(itemToGive);
+        NpcInteractionResponse localResponse = currentNPC.ProcessPlayerAction(PlayerActionType.GiveItem, null, itemToGive);
+        StartCoroutine(ProcessNpcTurn(localResponse, requestStartTime));
     }
 
     public void SubmitHit()
@@ -126,17 +150,194 @@ public class PlayerInteraction : MonoBehaviour
             return;
 
         float requestStartTime = Time.realtimeSinceStartup;
-        // API INTEGRATION POINT:
-        // Replace the local ProcessPlayerAction call below with your async API request.
-        // Send: NPC identity + PlayerActionType.Hit.
-        // Map API JSON response into NpcInteractionResponse, then pass it to ProcessNpcTurn.
-        NpcInteractionResponse response = currentNPC.ProcessPlayerAction(PlayerActionType.Hit, null, null);
-        StartCoroutine(ProcessNpcTurn(response, requestStartTime));
+        if (useBackendAI)
+        {
+            StartCoroutine(HandleBackendAction(PlayerActionType.Hit, null, null, requestStartTime));
+            return;
+        }
+
+        NpcInteractionResponse localResponse = currentNPC.ProcessPlayerAction(PlayerActionType.Hit, null, null);
+        StartCoroutine(ProcessNpcTurn(localResponse, requestStartTime));
+    }
+
+    private System.Collections.IEnumerator HandleBackendAction(PlayerActionType actionType, string playerMessage, ItemData givenItem, float requestStartTime)
+    {
+        isPlayerTurn = false;
+        if (interactionPopupUI != null)
+            interactionPopupUI.SetTurnState(false);
+
+        string npcId = currentNPC != null ? currentNPC.NpcId : string.Empty;
+        string action = MapActionForBackend(actionType);
+        string message = BuildMessageForResponse(actionType, playerMessage, givenItem);
+
+        bool eventOk = false;
+        yield return StartCoroutine(PostEvent(playerId, npcId, action, ok => eventOk = ok));
+
+        if (!eventOk)
+        {
+            if (interactionPopupUI != null)
+                interactionPopupUI.SetStatus("Could not sync event. Try again.");
+            isPlayerTurn = true;
+            if (interactionPopupUI != null)
+                interactionPopupUI.SetTurnState(true);
+            yield break;
+        }
+
+        if (actionType == PlayerActionType.GiveItem && givenItem != null && inventory != null)
+            inventory.RemoveItem(givenItem);
+
+        string npcReply = string.Empty;
+        bool responseOk = false;
+        yield return StartCoroutine(PostResponse(playerId, npcId, message, (ok, text) =>
+        {
+            responseOk = ok;
+            npcReply = text;
+        }));
+
+        NpcInteractionResponse response;
+        if (responseOk)
+        {
+            response = new NpcInteractionResponse
+            {
+                ReplyText = string.IsNullOrWhiteSpace(npcReply) ? "I have nothing to say." : npcReply,
+                NpcAction = NpcActionType.None
+            };
+        }
+        else
+        {
+            response = new NpcInteractionResponse
+            {
+                ReplyText = "I cannot speak clearly right now.",
+                NpcAction = NpcActionType.None
+            };
+        }
+
+        yield return StartCoroutine(ProcessNpcTurn(response, requestStartTime));
+    }
+
+    private System.Collections.IEnumerator PostEvent(string currentPlayerId, string npcId, string action, System.Action<bool> onDone)
+    {
+        EventRequest payload = new EventRequest
+        {
+            player_id = currentPlayerId,
+            npc_id = npcId,
+            action = action
+        };
+
+        string json = JsonUtility.ToJson(payload);
+        using (UnityWebRequest request = BuildJsonPost(BuildUrl("/event"), json))
+        {
+            request.timeout = Mathf.CeilToInt(requestTimeoutSeconds);
+            yield return request.SendWebRequest();
+            bool ok = request.result == UnityWebRequest.Result.Success;
+            if (!ok)
+                Debug.LogWarning("Event request failed: " + request.error);
+            onDone?.Invoke(ok);
+        }
+    }
+
+    private System.Collections.IEnumerator PostResponse(string currentPlayerId, string npcId, string message, System.Action<bool, string> onDone)
+    {
+        ResponseRequest payload = new ResponseRequest
+        {
+            player_id = currentPlayerId,
+            npc_id = npcId,
+            message = message
+        };
+
+        string json = JsonUtility.ToJson(payload);
+        using (UnityWebRequest request = BuildJsonPost(BuildUrl("/response"), json))
+        {
+            request.timeout = Mathf.CeilToInt(requestTimeoutSeconds);
+            yield return request.SendWebRequest();
+            bool ok = request.result == UnityWebRequest.Result.Success;
+            string text = ok ? request.downloadHandler.text : string.Empty;
+            if (!ok)
+                Debug.LogWarning("Response request failed: " + request.error);
+            onDone?.Invoke(ok, text);
+        }
+    }
+
+    private static UnityWebRequest BuildJsonPost(string url, string jsonBody)
+    {
+        byte[] bodyRaw = System.Text.Encoding.UTF8.GetBytes(jsonBody);
+        UnityWebRequest request = new UnityWebRequest(url, UnityWebRequest.kHttpVerbPOST);
+        request.uploadHandler = new UploadHandlerRaw(bodyRaw);
+        request.downloadHandler = new DownloadHandlerBuffer();
+        request.SetRequestHeader("Content-Type", "application/json");
+        return request;
+    }
+
+    private string BuildUrl(string path)
+    {
+        string baseUrl = string.IsNullOrWhiteSpace(backendBaseUrl) ? "http://localhost:8000" : backendBaseUrl.Trim();
+        return baseUrl.TrimEnd('/') + path;
+    }
+
+    private System.Collections.IEnumerator CheckBackendHealth()
+    {
+        using (UnityWebRequest request = UnityWebRequest.Get(BuildUrl("/health")))
+        {
+            request.timeout = Mathf.CeilToInt(requestTimeoutSeconds);
+            yield return request.SendWebRequest();
+            bool ok = request.result == UnityWebRequest.Result.Success;
+            if (interactionPopupUI != null && isInteractionActive)
+            {
+                if (ok)
+                    interactionPopupUI.SetStatus("Connected to AI backend. Your turn.");
+                else
+                    interactionPopupUI.SetStatus("Backend offline. Check server on localhost:8000.");
+            }
+        }
+    }
+
+    private static string MapActionForBackend(PlayerActionType actionType)
+    {
+        switch (actionType)
+        {
+            case PlayerActionType.Hit:
+                return "ATTACK";
+            case PlayerActionType.GiveItem:
+                return "HELP";
+            case PlayerActionType.Talk:
+            default:
+                return "TALK";
+        }
+    }
+
+    private static string BuildMessageForResponse(PlayerActionType actionType, string playerMessage, ItemData givenItem)
+    {
+        switch (actionType)
+        {
+            case PlayerActionType.Hit:
+                return "Do you remember what I did to you?";
+            case PlayerActionType.GiveItem:
+                return givenItem == null ? "Do you remember me?" : "I gave you " + givenItem.itemName + ". Do you remember me?";
+            case PlayerActionType.Talk:
+            default:
+                return string.IsNullOrWhiteSpace(playerMessage) ? "hello" : playerMessage;
+        }
     }
 
     private bool CanAct()
     {
         return isInteractionActive && isPlayerTurn && currentNPC != null;
+    }
+
+    [System.Serializable]
+    private class EventRequest
+    {
+        public string player_id;
+        public string npc_id;
+        public string action;
+    }
+
+    [System.Serializable]
+    private class ResponseRequest
+    {
+        public string player_id;
+        public string npc_id;
+        public string message;
     }
 
     private System.Collections.IEnumerator ShowNpcLine(string line)
