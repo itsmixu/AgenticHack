@@ -139,6 +139,26 @@ public class PlayerInteraction : MonoBehaviour
         return isInteractionActive && isPlayerTurn && currentNPC != null;
     }
 
+    private System.Collections.IEnumerator ShowNpcLine(string line)
+    {
+        if (string.IsNullOrWhiteSpace(line))
+            yield break;
+
+        if (interactionPopupUI != null)
+            interactionPopupUI.ShowDialogue(line);
+        else
+            ReceiveDialogueFromNPC(new[] { line });
+
+        if (ElevenLabsTTS.Instance != null && currentNPC != null)
+            yield return StartCoroutine(ElevenLabsTTS.Instance.Speak(line, currentNPC.VoiceId));
+
+        if (DialogueManager.Instance != null)
+            yield return new WaitUntil(() => DialogueManager.Instance.isDialogueActive == false);
+
+        if (isInteractionActive)
+            PlayerMovement.Instance.canMove = false;
+    }
+
     private System.Collections.IEnumerator ProcessNpcTurn(NpcInteractionResponse response, float requestStartTime)
     {
         isPlayerTurn = false;
@@ -148,37 +168,16 @@ public class PlayerInteraction : MonoBehaviour
         if (response != null)
         {
             if (!string.IsNullOrWhiteSpace(response.ReplyText))
-            {
-                if (interactionPopupUI != null)
-                    interactionPopupUI.ShowDialogue(response.ReplyText);
-                else
-                    ReceiveDialogueFromNPC(new[] { response.ReplyText });
-
-                if (DialogueManager.Instance != null)
-                    yield return new WaitUntil(() => DialogueManager.Instance.isDialogueActive == false);
-
-                if (isInteractionActive)
-                    PlayerMovement.Instance.canMove = false;
-            }
+                yield return StartCoroutine(ShowNpcLine(response.ReplyText));
 
             switch (response.NpcAction)
             {
                 case NpcActionType.Talk:
                     if (!string.IsNullOrWhiteSpace(response.NpcActionText))
-                    {
-                        if (interactionPopupUI != null)
-                            interactionPopupUI.ShowDialogue(response.NpcActionText);
-                        else
-                            ReceiveDialogueFromNPC(new[] { response.NpcActionText });
-
-                        if (DialogueManager.Instance != null)
-                            yield return new WaitUntil(() => DialogueManager.Instance.isDialogueActive == false);
-
-                        if (isInteractionActive)
-                            PlayerMovement.Instance.canMove = false;
-                    }
+                        yield return StartCoroutine(ShowNpcLine(response.NpcActionText));
                     break;
                 case NpcActionType.GiveItem:
+                    // API should populate response.ItemToGive when NPC decides to give an item.
                     ReceiveItemFromNPC(response.ItemToGive);
                     break;
                 case NpcActionType.Hit:

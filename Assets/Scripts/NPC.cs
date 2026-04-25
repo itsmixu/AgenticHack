@@ -9,6 +9,7 @@ public class NPC : MonoBehaviour
     [SerializeField] private GameObject exclamation;
     [SerializeField] private ItemData flower;
     [SerializeField] private GameObject graveSpot;
+    [SerializeField] private string voiceId;
 
     [Header("Dialogue")]
     [SerializeField] private bool isDaisy = false;
@@ -44,6 +45,7 @@ public class NPC : MonoBehaviour
     }
 
     [HideInInspector] public bool playerNearby = false;
+    public string VoiceId => voiceId;
 
     private void OnTriggerEnter2D(Collider2D other)
     {
@@ -57,7 +59,6 @@ public class NPC : MonoBehaviour
     public void TalkToPlayer()
     {
         // Legacy entry point kept for compatibility.
-        if (itemDrop != null && dropAlways) StartCoroutine(DropItem());
     }
 
     public NpcInteractionResponse ProcessPlayerAction(PlayerActionType actionType, string playerMessage, ItemData givenItem)
@@ -129,46 +130,17 @@ public class NPC : MonoBehaviour
 
     public void ReceiveItem(ItemData item)
     {
-        if (item == flower)
+        NpcInteractionResponse response = new NpcInteractionResponse
         {
-            AudioManager.Instance.PlayMusic("Sacrifice");
-            Instantiate(gameObject, transform.position, transform.rotation); //copy itself
-            transform. position = graveSpot.transform.position; // move itself to the graveyard
-            sacrifice = gameObject.name;
-            DialogueManager.Instance.ShowDialogue(flowerDialogue);
-        }
-        else
-        {
-            if (item == wantedItem)
-            {
-                DialogueManager.Instance.ShowDialogue(correctItemDialogue);
-                if (isDaisy)
-                {
-                    animator.Play("DaisyKazoo");
-                    AudioManager.Instance.PlaySFX("Kazoo");
-                }
+            ReplyText = item == null
+                ? name + " did not receive an item."
+                : name + " received " + item.itemName + ".",
+            NpcAction = NpcActionType.None
+        };
 
-                if (itemDrop != null && requireCorrectItem == true)
-                {
-                    StartCoroutine(DropItem());
-                }
-            }
-            else
-            {
-                DialogueManager.Instance.ShowDialogue(wrongItemDialogue);
-            }
-
-            if (itemDrop != null && requireCorrectItem == false)
-            {
-                StartCoroutine(DropItem());
-            }
-        }
+        if (!string.IsNullOrWhiteSpace(response.ReplyText) && DialogueManager.Instance != null)
+            DialogueManager.Instance.ShowDialogue(new[] { response.ReplyText });
     }
 
-    private IEnumerator DropItem()
-    {
-        yield return new WaitUntil(() => DialogueManager.Instance.isDialogueActive == false);
-        itemDrop.SetActive(true);
-    }
 }
 
