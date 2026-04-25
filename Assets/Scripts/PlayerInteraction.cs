@@ -1,5 +1,7 @@
+using System.Collections;
 using UnityEngine;
 using UnityEngine.Networking;
+using TMPro;
 
 public class PlayerInteraction : MonoBehaviour
 {
@@ -16,10 +18,13 @@ public class PlayerInteraction : MonoBehaviour
     private Inventory inventory;
     private bool isInteractionActive;
     private bool isPlayerTurn;
-    private bool isAwaitingGiveItemSlot;
+    private Coroutine giveItemSelectionCoroutine;
 
     public bool IsInteractionActive => isInteractionActive;
     public bool IsPlayerTurn => isPlayerTurn;
+
+    /// <summary>Chat input on the interaction popup — DialogueManager can render NPC lines here.</summary>
+    public TMP_InputField NpcChatInput => interactionPopupUI != null ? interactionPopupUI.NpcChatInput : null;
 
     private void Awake()
     {
@@ -46,12 +51,6 @@ public class PlayerInteraction : MonoBehaviour
     {
         if (currentNPC == null || IsDialogueActive())
             return;
-
-        if (isInteractionActive && isPlayerTurn && isAwaitingGiveItemSlot)
-        {
-            HandleGiveItemSlotInput();
-            return;
-        }
 
         if (!isInteractionActive && Input.GetKeyDown(KeyCode.E))
         {
@@ -95,8 +94,6 @@ public class PlayerInteraction : MonoBehaviour
         {
             interactionPopupUI.Hide();
         }
-
-        isAwaitingGiveItemSlot = false;
     }
 
     public void SubmitTalk(string message)
@@ -161,14 +158,69 @@ public class PlayerInteraction : MonoBehaviour
         StartCoroutine(ProcessNpcTurn(localResponse, requestStartTime));
     }
 
+    /// <summary>
+    /// UI entry for Give Item: show slot prompt (1–5) then call <see cref="SubmitGiveItem"/> for the chosen inventory slot.
+    /// </summary>
     public void BeginGiveItemSelection()
     {
         if (!CanAct())
             return;
 
-        isAwaitingGiveItemSlot = true;
+        if (inventory == null)
+        {
+            if (interactionPopupUI != null)
+                interactionPopupUI.SetStatus("Player inventory not found.");
+            return;
+        }
+
+        if (giveItemSelectionCoroutine != null)
+            StopCoroutine(giveItemSelectionCoroutine);
+
+        giveItemSelectionCoroutine = StartCoroutine(GiveItemSelectionRoutine());
+    }
+
+    private IEnumerator GiveItemSelectionRoutine()
+    {
         if (interactionPopupUI != null)
             interactionPopupUI.BeginGiveItemSelectionPrompt();
+
+        try
+        {
+            while (true)
+            {
+                int slot = -1;
+                if (Input.GetKeyDown(KeyCode.Alpha1) || Input.GetKeyDown(KeyCode.Keypad1)) slot = 0;
+                else if (Input.GetKeyDown(KeyCode.Alpha2) || Input.GetKeyDown(KeyCode.Keypad2)) slot = 1;
+                else if (Input.GetKeyDown(KeyCode.Alpha3) || Input.GetKeyDown(KeyCode.Keypad3)) slot = 2;
+                else if (Input.GetKeyDown(KeyCode.Alpha4) || Input.GetKeyDown(KeyCode.Keypad4)) slot = 3;
+                else if (Input.GetKeyDown(KeyCode.Alpha5) || Input.GetKeyDown(KeyCode.Keypad5)) slot = 4;
+                else if (Input.GetKeyDown(KeyCode.Escape))
+                    yield break;
+
+                if (slot >= 0)
+                {
+                    if (slot >= inventory.items.Count || inventory.items[slot] == null)
+                    {
+                        if (interactionPopupUI != null)
+                            interactionPopupUI.SetStatus("No item in that slot.");
+                    }
+                    else
+                    {
+                        SubmitGiveItem(inventory.items[slot].itemName);
+                        yield break;
+                    }
+                }
+
+                yield return null;
+            }
+        }
+        finally
+        {
+            if (interactionPopupUI != null)
+                interactionPopupUI.EndGiveItemSelectionPrompt();
+
+            giveItemSelectionCoroutine = null;
+        }
     }
 
     public void SubmitHit()
@@ -385,51 +437,6 @@ public class PlayerInteraction : MonoBehaviour
         return isInteractionActive && isPlayerTurn && currentNPC != null;
     }
 
-    private void HandleGiveItemSlotInput()
-    {
-        int slotIndex = -1;
-
-        if (Input.GetKeyDown(KeyCode.Alpha1)) slotIndex = 0;
-        else if (Input.GetKeyDown(KeyCode.Alpha2)) slotIndex = 1;
-        else if (Input.GetKeyDown(KeyCode.Alpha3)) slotIndex = 2;
-        else if (Input.GetKeyDown(KeyCode.Alpha4)) slotIndex = 3;
-        else if (Input.GetKeyDown(KeyCode.Alpha5)) slotIndex = 4;
-
-        if (slotIndex < 0)
-            return;
-
-        if (inventory == null)
-        {
-            if (interactionPopupUI != null)
-                interactionPopupUI.SetStatus("Player inventory not found.");
-            return;
-        }
-
-        if (slotIndex >= inventory.items.Count || inventory.items[slotIndex] == null)
-        {
-            if (interactionPopupUI != null)
-                interactionPopupUI.SetStatus("No item in that slot. Press 1-5.");
-            return;
-        }
-
-        ItemData itemToGive = inventory.items[slotIndex];
-        inventory.RemoveItem(itemToGive);
-
-        isAwaitingGiveItemSlot = false;
-        if (interactionPopupUI != null)
-            interactionPopupUI.EndGiveItemSelectionPrompt();
-
-        float requestStartTime = Time.realtimeSinceStartup;
-        if (useBackendAI)
-        {
-            StartCoroutine(HandleBackendAction(PlayerActionType.GiveItem, null, itemToGive, requestStartTime));
-            return;
-        }
-
-        NpcInteractionResponse response = currentNPC.ProcessPlayerAction(PlayerActionType.GiveItem, null, itemToGive);
-        StartCoroutine(ProcessNpcTurn(response, requestStartTime));
-    }
-
     [System.Serializable]
     private class EventRequest
     {
@@ -468,12 +475,8 @@ public class PlayerInteraction : MonoBehaviour
     private System.Collections.IEnumerator ProcessNpcTurn(NpcInteractionResponse response, float requestStartTime)
     {
         isPlayerTurn = false;
-        isAwaitingGiveItemSlot = false;
         if (interactionPopupUI != null)
-        {
-            interactionPopupUI.EndGiveItemSelectionPrompt();
             interactionPopupUI.SetTurnState(false);
-        }
 
         Debug.Log($"[PlayerInteraction] ProcessNpcTurn start hasResponse={(response != null)} reply='{(response != null ? response.ReplyText : "null")}'");
 
