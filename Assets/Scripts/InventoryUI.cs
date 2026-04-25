@@ -1,6 +1,4 @@
 using UnityEngine;
-using UnityEngine.UI;
-using TMPro;
 
 public class InventoryUI : MonoBehaviour
 {
@@ -28,14 +26,8 @@ public class InventoryUI : MonoBehaviour
 
     private void Update()
     {
-        // Listen for number keys 1 to 9
         for (int i = 0; i < slots.Length; i++)
         {
-            if (Input.GetKeyDown((i + 1).ToString()))
-            {
-                GiveItemToNPC(i);
-            }
-
             if (i < playerInventory.items.Count)
                 slots[i].SetItem(playerInventory.items[i]);
             else
@@ -55,21 +47,4 @@ public class InventoryUI : MonoBehaviour
         }
     }
 
-    private void GiveItemToNPC(int index)   
-    {
-        if (index < playerInventory.items.Count)
-        {
-            ItemData itemToGive = playerInventory.items[index];
-            if (PlayerInteraction.Instance.currentNPC != null)
-            {
-                PlayerInteraction.Instance.currentNPC.ReceiveItem(itemToGive);
-                playerInventory.RemoveItem(itemToGive);
-                Debug.Log("Gave " + itemToGive.itemName + " to NPC " + PlayerInteraction.Instance.currentNPC.name);
-            }
-            else
-            {
-                Debug.Log("No NPC nearby to give item.");
-            }
-        }
-    }
 }

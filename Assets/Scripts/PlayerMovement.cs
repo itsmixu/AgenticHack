@@ -7,7 +7,7 @@ public class PlayerMovement : MonoBehaviour
 
     [SerializeField] float speed = 0.5f;
     [SerializeField] private CinemachineCamera graveyardCam;
-    public bool canMove = false;
+    public bool canMove = true;
     private Rigidbody2D rb;
     private Vector2 input;
 
@@ -28,7 +28,7 @@ public class PlayerMovement : MonoBehaviour
 
     void Update()
     {
-        if (canMove && graveyardCam.enabled == false)
+        if (canMove)
         {
             input.x = Input.GetAxisRaw("Horizontal");
             input.y = Input.GetAxisRaw("Vertical");

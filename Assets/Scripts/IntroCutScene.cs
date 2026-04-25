@@ -17,7 +17,7 @@ public class IntroCutScene : MonoBehaviour
         ghost.SetActive(false);
         ScreenFlash.Instance.FadeOut(Color.black, 3);
         AudioManager.Instance.PlayMusic("Sad");
-        StartCoroutine(Intro());
+        //StartCoroutine(Intro());
     }
 
     IEnumerator Intro()

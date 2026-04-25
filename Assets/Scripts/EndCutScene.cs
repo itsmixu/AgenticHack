@@ -71,8 +71,6 @@ public class EndCutScene : MonoBehaviour
         yield return new WaitForSeconds(3f);
         graveyardCam.enabled = true;
         inventoryUI.SetActive(false);
-        charSheetUI.SetActive(false);
-        charSheetPopupUI.SetActive(false);
         ScreenFlash.Instance.FadeOut(Color.black, 2f);
 
         if (inventory.items.Contains(flower))
