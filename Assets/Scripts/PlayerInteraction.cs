@@ -7,10 +7,6 @@ public class PlayerInteraction : MonoBehaviour
     public NPC currentNPC;
     [SerializeField] private InteractionPopupUI interactionPopupUI;
 
-    [Header("Player State")]
-    [SerializeField] private int maxHealth = 10;
-    [SerializeField] private int currentHealth;
-
     private Inventory inventory;
     private bool isInteractionActive;
     private bool isPlayerTurn;
@@ -26,7 +22,6 @@ public class PlayerInteraction : MonoBehaviour
             Destroy(gameObject);
 
         inventory = GetComponent<Inventory>();
-        currentHealth = maxHealth;
     }
 
     private void Update()
@@ -76,7 +71,9 @@ public class PlayerInteraction : MonoBehaviour
         if (!CanAct())
             return;
 
-        StartCoroutine(ProcessNpcTurn(currentNPC.ProcessPlayerAction(PlayerActionType.Talk, message, null)));
+        float requestStartTime = Time.realtimeSinceStartup;
+        NpcInteractionResponse response = currentNPC.ProcessPlayerAction(PlayerActionType.Talk, message, null);
+        StartCoroutine(ProcessNpcTurn(response, requestStartTime));
     }
 
     public void SubmitGiveItem(string itemName)
@@ -110,7 +107,9 @@ public class PlayerInteraction : MonoBehaviour
         }
 
         inventory.RemoveItem(itemToGive);
-        StartCoroutine(ProcessNpcTurn(currentNPC.ProcessPlayerAction(PlayerActionType.GiveItem, null, itemToGive)));
+        float requestStartTime = Time.realtimeSinceStartup;
+        NpcInteractionResponse response = currentNPC.ProcessPlayerAction(PlayerActionType.GiveItem, null, itemToGive);
+        StartCoroutine(ProcessNpcTurn(response, requestStartTime));
     }
 
     public void SubmitHit()
@@ -118,7 +117,9 @@ public class PlayerInteraction : MonoBehaviour
         if (!CanAct())
             return;
 
-        StartCoroutine(ProcessNpcTurn(currentNPC.ProcessPlayerAction(PlayerActionType.Hit, null, null)));
+        float requestStartTime = Time.realtimeSinceStartup;
+        NpcInteractionResponse response = currentNPC.ProcessPlayerAction(PlayerActionType.Hit, null, null);
+        StartCoroutine(ProcessNpcTurn(response, requestStartTime));
     }
 
     private bool CanAct()
@@ -126,7 +127,7 @@ public class PlayerInteraction : MonoBehaviour
         return isInteractionActive && isPlayerTurn && currentNPC != null;
     }
 
-    private System.Collections.IEnumerator ProcessNpcTurn(NpcInteractionResponse response)
+    private System.Collections.IEnumerator ProcessNpcTurn(NpcInteractionResponse response, float requestStartTime)
     {
         isPlayerTurn = false;
         if (interactionPopupUI != null)
@@ -174,9 +175,10 @@ public class PlayerInteraction : MonoBehaviour
             }
         }
 
+        float responseMs = (Time.realtimeSinceStartup - requestStartTime) * 1000f;
         isPlayerTurn = true;
         if (interactionPopupUI != null)
-            interactionPopupUI.SetTurnState(true);
+            interactionPopupUI.SetStatus($"API responded in {responseMs:0} ms. Your turn.");
     }
 
     public bool GiveItemToNPC(ItemData item)

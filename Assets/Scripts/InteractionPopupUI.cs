@@ -32,6 +32,13 @@ public class InteractionPopupUI : MonoBehaviour
 
     public void SetTurnState(bool isPlayerTurn)
     {
+        if (inputField != null)
+        {
+            inputField.interactable = isPlayerTurn;
+            if (!isPlayerTurn)
+                inputField.DeactivateInputField();
+        }
+
         SetStatus(isPlayerTurn ? "Your turn." : "NPC is thinking...");
     }
 
