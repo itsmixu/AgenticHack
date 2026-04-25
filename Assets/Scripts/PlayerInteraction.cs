@@ -72,6 +72,10 @@ public class PlayerInteraction : MonoBehaviour
             return;
 
         float requestStartTime = Time.realtimeSinceStartup;
+        // API INTEGRATION POINT:
+        // Replace the local ProcessPlayerAction call below with your async API request.
+        // Send: NPC identity + PlayerActionType.Talk + message.
+        // Map API JSON response into NpcInteractionResponse, then pass it to ProcessNpcTurn.
         NpcInteractionResponse response = currentNPC.ProcessPlayerAction(PlayerActionType.Talk, message, null);
         StartCoroutine(ProcessNpcTurn(response, requestStartTime));
     }
@@ -108,6 +112,10 @@ public class PlayerInteraction : MonoBehaviour
 
         inventory.RemoveItem(itemToGive);
         float requestStartTime = Time.realtimeSinceStartup;
+        // API INTEGRATION POINT:
+        // Replace the local ProcessPlayerAction call below with your async API request.
+        // Send: NPC identity + PlayerActionType.GiveItem + item payload (item name/id).
+        // Map API JSON response into NpcInteractionResponse, then pass it to ProcessNpcTurn.
         NpcInteractionResponse response = currentNPC.ProcessPlayerAction(PlayerActionType.GiveItem, null, itemToGive);
         StartCoroutine(ProcessNpcTurn(response, requestStartTime));
     }
@@ -118,6 +126,10 @@ public class PlayerInteraction : MonoBehaviour
             return;
 
         float requestStartTime = Time.realtimeSinceStartup;
+        // API INTEGRATION POINT:
+        // Replace the local ProcessPlayerAction call below with your async API request.
+        // Send: NPC identity + PlayerActionType.Hit.
+        // Map API JSON response into NpcInteractionResponse, then pass it to ProcessNpcTurn.
         NpcInteractionResponse response = currentNPC.ProcessPlayerAction(PlayerActionType.Hit, null, null);
         StartCoroutine(ProcessNpcTurn(response, requestStartTime));
     }
