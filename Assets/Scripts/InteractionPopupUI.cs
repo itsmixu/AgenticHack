@@ -8,6 +8,9 @@ public class InteractionPopupUI : MonoBehaviour
     [SerializeField] private TMP_InputField inputField;
     [SerializeField] private TextMeshProUGUI statusText;
 
+    /// <summary>Player chat / NPC reply box (same UI the player types into).</summary>
+    public TMP_InputField NpcChatInput => inputField;
+
     private void Awake()
     {
         if (panel != null)
@@ -44,9 +47,9 @@ public class InteractionPopupUI : MonoBehaviour
 
         if (inputField != null)
         {
-            inputField.interactable = isPlayerTurn;
-            if (!isPlayerTurn)
-                inputField.DeactivateInputField();
+            // Keep chat box fully enabled visually and functionally during NPC turn.
+            inputField.interactable = true;
+            inputField.readOnly = false;
         }
 
         SetStatus(isPlayerTurn ? "Your turn." : "NPC is thinking...");
