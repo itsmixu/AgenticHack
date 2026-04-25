@@ -4,6 +4,7 @@ using UnityEngine;
 public class InteractionPopupUI : MonoBehaviour
 {
     [SerializeField] private GameObject panel;
+    [SerializeField] private GameObject actionButtonsParent;
     [SerializeField] private TMP_InputField inputField;
     [SerializeField] private TextMeshProUGUI statusText;
 
@@ -18,6 +19,9 @@ public class InteractionPopupUI : MonoBehaviour
         if (panel != null)
             panel.SetActive(true);
 
+        if (actionButtonsParent != null)
+            actionButtonsParent.SetActive(true);
+
         if (inputField != null)
             inputField.text = string.Empty;
 
@@ -28,10 +32,16 @@ public class InteractionPopupUI : MonoBehaviour
     {
         if (panel != null)
             panel.SetActive(false);
+
+        if (actionButtonsParent != null)
+            actionButtonsParent.SetActive(false);
     }
 
     public void SetTurnState(bool isPlayerTurn)
     {
+        if (actionButtonsParent != null)
+            actionButtonsParent.SetActive(isPlayerTurn);
+
         if (inputField != null)
         {
             inputField.interactable = isPlayerTurn;
@@ -77,8 +87,7 @@ public class InteractionPopupUI : MonoBehaviour
         if (PlayerInteraction.Instance == null)
             return;
 
-        string itemName = inputField != null ? inputField.text : string.Empty;
-        PlayerInteraction.Instance.SubmitGiveItem(itemName);
+        PlayerInteraction.Instance.BeginGiveItemSelection();
     }
 
     public void OnHitPressed()
@@ -95,5 +104,32 @@ public class InteractionPopupUI : MonoBehaviour
             return;
 
         PlayerInteraction.Instance.EndInteraction();
+    }
+
+    public void BeginGiveItemSelectionPrompt()
+    {
+        if (actionButtonsParent != null)
+            actionButtonsParent.SetActive(false);
+
+        if (inputField != null)
+        {
+            inputField.interactable = false;
+            inputField.text = "Press 1-5 to choose an inventory slot.";
+            inputField.DeactivateInputField();
+        }
+
+        SetStatus("Choose item slot (1-5).");
+    }
+
+    public void EndGiveItemSelectionPrompt()
+    {
+        if (actionButtonsParent != null)
+            actionButtonsParent.SetActive(true);
+
+        if (inputField != null)
+        {
+            inputField.interactable = true;
+            inputField.text = string.Empty;
+        }
     }
 }
