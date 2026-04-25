@@ -44,7 +44,7 @@ public class PlayerInteraction : MonoBehaviour
 
     private void Update()
     {
-        if (currentNPC == null || DialogueManager.Instance.isDialogueActive)
+        if (currentNPC == null || IsDialogueActive())
             return;
 
         if (isInteractionActive && isPlayerTurn && isAwaitingGiveItemSlot)
@@ -66,7 +66,8 @@ public class PlayerInteraction : MonoBehaviour
 
         isInteractionActive = true;
         isPlayerTurn = true;
-        PlayerMovement.Instance.canMove = false;
+        if (PlayerMovement.Instance != null)
+            PlayerMovement.Instance.canMove = false;
 
         if (interactionPopupUI != null)
         {
@@ -76,6 +77,8 @@ public class PlayerInteraction : MonoBehaviour
 
         if (useBackendAI)
             StartCoroutine(CheckBackendHealth());
+
+        Debug.Log($"[PlayerInteraction] BeginInteraction npc={(currentNPC != null ? currentNPC.NpcId : "null")} backendAI={useBackendAI}");
     }
 
     public void EndInteraction()
@@ -85,7 +88,8 @@ public class PlayerInteraction : MonoBehaviour
 
         isInteractionActive = false;
         isPlayerTurn = false;
-        PlayerMovement.Instance.canMove = true;
+        if (PlayerMovement.Instance != null)
+            PlayerMovement.Instance.canMove = true;
 
         if (interactionPopupUI != null)
         {
@@ -99,6 +103,8 @@ public class PlayerInteraction : MonoBehaviour
     {
         if (!CanAct())
             return;
+
+        Debug.Log($"[PlayerInteraction] SubmitTalk message='{message}'");
 
         float requestStartTime = Time.realtimeSinceStartup;
         if (useBackendAI)
@@ -115,6 +121,8 @@ public class PlayerInteraction : MonoBehaviour
     {
         if (!CanAct())
             return;
+
+        Debug.Log($"[PlayerInteraction] SubmitGiveItem itemName='{itemName}'");
 
         if (inventory == null)
         {
@@ -168,6 +176,8 @@ public class PlayerInteraction : MonoBehaviour
         if (!CanAct())
             return;
 
+        Debug.Log("[PlayerInteraction] SubmitHit");
+
         float requestStartTime = Time.realtimeSinceStartup;
         if (useBackendAI)
         {
@@ -189,8 +199,12 @@ public class PlayerInteraction : MonoBehaviour
         string action = MapActionForBackend(actionType);
         string message = BuildMessageForResponse(actionType, playerMessage, givenItem);
 
+        Debug.Log($"[PlayerInteraction] HandleBackendAction start actionType={actionType} mappedAction={action} playerId={playerId} npcId={npcId} message='{message}'");
+
         bool eventOk = false;
         yield return StartCoroutine(PostEvent(playerId, npcId, action, ok => eventOk = ok));
+
+        Debug.Log($"[PlayerInteraction] PostEvent completed ok={eventOk}");
 
         if (!eventOk)
         {
@@ -213,6 +227,8 @@ public class PlayerInteraction : MonoBehaviour
             npcReply = text;
         }));
 
+        Debug.Log($"[PlayerInteraction] PostResponse completed ok={responseOk} reply='{npcReply}'");
+
         NpcInteractionResponse response;
         if (responseOk)
         {
@@ -232,6 +248,7 @@ public class PlayerInteraction : MonoBehaviour
         }
 
         yield return StartCoroutine(ProcessNpcTurn(response, requestStartTime));
+        Debug.Log("[PlayerInteraction] HandleBackendAction end");
     }
 
     private System.Collections.IEnumerator PostEvent(string currentPlayerId, string npcId, string action, System.Action<bool> onDone)
@@ -247,10 +264,13 @@ public class PlayerInteraction : MonoBehaviour
         using (UnityWebRequest request = BuildJsonPost(BuildUrl("/event"), json))
         {
             request.timeout = Mathf.CeilToInt(requestTimeoutSeconds);
+            Debug.Log($"[PlayerInteraction] POST /event url={request.url} body={json}");
             yield return request.SendWebRequest();
             bool ok = request.result == UnityWebRequest.Result.Success;
             if (!ok)
                 Debug.LogWarning("Event request failed: " + request.error);
+            else
+                Debug.Log($"[PlayerInteraction] /event response={request.downloadHandler.text}");
             onDone?.Invoke(ok);
         }
     }
@@ -268,11 +288,14 @@ public class PlayerInteraction : MonoBehaviour
         using (UnityWebRequest request = BuildJsonPost(BuildUrl("/response"), json))
         {
             request.timeout = Mathf.CeilToInt(requestTimeoutSeconds);
+            Debug.Log($"[PlayerInteraction] POST /response url={request.url} body={json}");
             yield return request.SendWebRequest();
             bool ok = request.result == UnityWebRequest.Result.Success;
-            string text = ok ? request.downloadHandler.text : string.Empty;
+            string text = ok ? NormalizeServerText(request.downloadHandler.text) : string.Empty;
             if (!ok)
                 Debug.LogWarning("Response request failed: " + request.error);
+            else
+                Debug.Log($"[PlayerInteraction] /response raw={request.downloadHandler.text} normalized='{text}'");
             onDone?.Invoke(ok, text);
         }
     }
@@ -298,8 +321,10 @@ public class PlayerInteraction : MonoBehaviour
         using (UnityWebRequest request = UnityWebRequest.Get(BuildUrl("/health")))
         {
             request.timeout = Mathf.CeilToInt(requestTimeoutSeconds);
+            Debug.Log($"[PlayerInteraction] GET /health url={request.url}");
             yield return request.SendWebRequest();
             bool ok = request.result == UnityWebRequest.Result.Success;
+            Debug.Log($"[PlayerInteraction] /health ok={ok} response={(ok ? request.downloadHandler.text : request.error)}");
             if (interactionPopupUI != null && isInteractionActive)
             {
                 if (ok)
@@ -336,6 +361,23 @@ public class PlayerInteraction : MonoBehaviour
             default:
                 return string.IsNullOrWhiteSpace(playerMessage) ? "hello" : playerMessage;
         }
+    }
+
+    private static string NormalizeServerText(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return string.Empty;
+
+        string cleaned = text.Trim();
+        if (cleaned.Length >= 2 && cleaned[0] == '"' && cleaned[cleaned.Length - 1] == '"')
+            cleaned = cleaned.Substring(1, cleaned.Length - 2);
+
+        return cleaned.Trim();
+    }
+
+    private static bool IsDialogueActive()
+    {
+        return DialogueManager.Instance != null && DialogueManager.Instance.isDialogueActive;
     }
 
     private bool CanAct()
@@ -409,10 +451,9 @@ public class PlayerInteraction : MonoBehaviour
         if (string.IsNullOrWhiteSpace(line))
             yield break;
 
-        if (interactionPopupUI != null)
-            interactionPopupUI.ShowDialogue(line);
-        else
-            ReceiveDialogueFromNPC(new[] { line });
+        Debug.Log($"[PlayerInteraction] ShowNpcLine '{line}'");
+
+        ReceiveDialogueFromNPC(new[] { line });
 
         if (ElevenLabsTTS.Instance != null && currentNPC != null)
             yield return StartCoroutine(ElevenLabsTTS.Instance.Speak(line, currentNPC.VoiceId));
@@ -420,7 +461,7 @@ public class PlayerInteraction : MonoBehaviour
         if (DialogueManager.Instance != null)
             yield return new WaitUntil(() => DialogueManager.Instance.isDialogueActive == false);
 
-        if (isInteractionActive)
+        if (isInteractionActive && PlayerMovement.Instance != null)
             PlayerMovement.Instance.canMove = false;
     }
 
@@ -433,6 +474,8 @@ public class PlayerInteraction : MonoBehaviour
             interactionPopupUI.EndGiveItemSelectionPrompt();
             interactionPopupUI.SetTurnState(false);
         }
+
+        Debug.Log($"[PlayerInteraction] ProcessNpcTurn start hasResponse={(response != null)} reply='{(response != null ? response.ReplyText : "null")}'");
 
         if (response != null)
         {
@@ -459,6 +502,7 @@ public class PlayerInteraction : MonoBehaviour
         isPlayerTurn = true;
         if (interactionPopupUI != null)
             interactionPopupUI.SetStatus($"API responded in {responseMs:0} ms. Your turn.");
+        Debug.Log($"[PlayerInteraction] ProcessNpcTurn end responseMs={responseMs:0}");
     }
 
     public bool GiveItemToNPC(ItemData item)
@@ -498,7 +542,18 @@ public class PlayerInteraction : MonoBehaviour
         if (lines == null || lines.Length == 0)
             return;
 
-        DialogueManager.Instance.ShowDialogue(lines);
+        if (DialogueManager.Instance != null)
+        {
+            DialogueManager.Instance.ShowDialogue(lines);
+        }
+        else if (Instance != null && Instance.interactionPopupUI != null)
+        {
+            Instance.interactionPopupUI.SetStatus(lines[0]);
+        }
+        else
+        {
+            Debug.LogWarning("DialogueManager missing; cannot display NPC dialogue panel.");
+        }
     }
 
     private void OnTriggerEnter2D(Collider2D collision)
