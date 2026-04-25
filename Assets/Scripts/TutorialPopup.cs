@@ -4,11 +4,17 @@ public class TutorialPopup : MonoBehaviour
 {
     private void Start()
     {
-        PlayerMovement.Instance.canMove = false;
+        if (PlayerMovement.Instance != null)
+            PlayerMovement.Instance.canMove = false;
+        else
+            Debug.LogWarning("TutorialPopup: PlayerMovement.Instance is null in Start().");
     }
     public void ClosePopup()
     {
         gameObject.SetActive(false);
-        PlayerMovement.Instance.canMove = true;
+        if (PlayerMovement.Instance != null)
+            PlayerMovement.Instance.canMove = true;
+        else
+            Debug.LogWarning("TutorialPopup: PlayerMovement.Instance is null in ClosePopup().");
     }
 }

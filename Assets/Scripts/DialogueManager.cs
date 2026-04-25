@@ -15,6 +15,22 @@ public class DialogueManager : MonoBehaviour
     private bool isTyping = false;
     private bool canAdvance = false;
 
+    private void EnsureReferences()
+    {
+        if (dialoguePanel == null)
+        {
+            dialoguePanel = gameObject;
+            Debug.LogWarning("DialogueManager: dialoguePanel was null, defaulting to this GameObject.");
+        }
+
+        if (dialogueText == null)
+        {
+            dialogueText = GetComponentInChildren<TextMeshProUGUI>(true);
+            if (dialogueText != null)
+                Debug.LogWarning("DialogueManager: Auto-bound dialogueText from child TextMeshProUGUI.");
+        }
+    }
+
     private void Awake()
     {
         // Singleton pattern for easy access
@@ -22,10 +38,18 @@ public class DialogueManager : MonoBehaviour
             Instance = this;
         else
             Destroy(gameObject);
+
+        EnsureReferences();
     }
 
     private void StartTypingLine(string line)
     {
+        if (dialogueLines == null || dialogueLines.Length == 0 || currentLineIndex < 0 || currentLineIndex >= dialogueLines.Length)
+        {
+            Debug.LogWarning("DialogueManager: No dialogue lines to display.");
+            return;
+        }
+
         if (typingCoroutine != null)
             StopCoroutine(typingCoroutine);
 
@@ -35,11 +59,22 @@ public class DialogueManager : MonoBehaviour
     private IEnumerator TypeText(string line)
     {
         isTyping = true;
+
+        if (dialogueText == null)
+        {
+            Debug.LogWarning("DialogueManager: dialogueText reference is missing.");
+            yield break;
+        }
+
+        if (!dialogueText.gameObject.activeSelf)
+            dialogueText.gameObject.SetActive(true);
+        dialogueText.enabled = true;
+
         dialogueText.text = "";
         foreach (char c in line)
         {
             dialogueText.text += c;
-            yield return new WaitForSeconds(0.05f);
+            yield return new WaitForSecondsRealtime(0.05f);
         }
         isTyping = false;
         typingCoroutine = null; // typing finished
@@ -96,14 +131,17 @@ public class DialogueManager : MonoBehaviour
 
     private IEnumerator EndDialogue()
     {
-        yield return new WaitForSeconds(0.1f);
-        dialoguePanel.SetActive(false);
+        yield return new WaitForSecondsRealtime(0.1f);
+        if (dialoguePanel != null)
+            dialoguePanel.SetActive(false);
         isDialogueActive = false;
         currentLine = null;
         isTyping = false;
         canAdvance = false;
         typingCoroutine = null;
-        PlayerMovement.Instance.canMove = true;
+        Debug.Log("[DialogueManager] EndDialogue");
+        if (PlayerMovement.Instance != null)
+            PlayerMovement.Instance.canMove = true;
     }
 }
 

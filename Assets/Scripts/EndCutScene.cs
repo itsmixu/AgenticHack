@@ -65,7 +65,10 @@ public class EndCutScene : MonoBehaviour
 
     private IEnumerator StartEndCutscene()
     {
-        PlayerMovement.Instance.canMove = false;
+        if (PlayerMovement.Instance != null)
+            PlayerMovement.Instance.canMove = false;
+        else
+            Debug.LogWarning("EndCutScene: PlayerMovement.Instance is null in StartEndCutscene().");
         ScreenFlash.Instance.FadeIn(Color.black, 2f);
         AudioManager.Instance.PlayMusic("Ghost");
         yield return new WaitForSeconds(3f);
