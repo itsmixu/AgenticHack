@@ -9,10 +9,11 @@ public class DialogueManager : MonoBehaviour
     [SerializeField] private TextMeshProUGUI dialogueText;
     [SerializeField] private GameObject dialoguePanel;
 
-    private string[] dialogueLines;
-    private int currentLineIndex = 0;
+    private string currentLine;
     public bool isDialogueActive = false;
     private Coroutine typingCoroutine;
+    private bool isTyping = false;
+    private bool canAdvance = false;
 
     private void Awake()
     {
@@ -23,37 +24,48 @@ public class DialogueManager : MonoBehaviour
             Destroy(gameObject);
     }
 
-    private void StartTypingLine()
+    private void StartTypingLine(string line)
     {
         if (typingCoroutine != null)
             StopCoroutine(typingCoroutine);
 
-        typingCoroutine = StartCoroutine(TypeText(dialogueLines[currentLineIndex]));
+        typingCoroutine = StartCoroutine(TypeText(line));
     }
 
     private IEnumerator TypeText(string line)
     {
+        isTyping = true;
         dialogueText.text = "";
         foreach (char c in line)
         {
             dialogueText.text += c;
             yield return new WaitForSeconds(0.05f);
         }
+        isTyping = false;
         typingCoroutine = null; // typing finished
     }
-    private bool canAdvance = false;
 
-    public void ShowDialogue(string[] lines)
+    public void ShowDialogue(string line)
     {
-        dialogueLines = lines;
-        currentLineIndex = 0;
+        if (string.IsNullOrWhiteSpace(line))
+            return;
+
+        currentLine = line;
         isDialogueActive = true;
         canAdvance = false;
         dialoguePanel.SetActive(true);
         PlayerMovement.Instance.canMove = false;
-        StartTypingLine();
+        StartTypingLine(currentLine);
         StartCoroutine(EnableAdvanceNextFrame());
+    }
 
+    // Backward compatibility for existing callers; only first entry is shown.
+    public void ShowDialogue(string[] lines)
+    {
+        if (lines == null || lines.Length == 0)
+            return;
+
+        ShowDialogue(lines[0]);
     }
 
     private IEnumerator EnableAdvanceNextFrame()
@@ -66,23 +78,18 @@ public class DialogueManager : MonoBehaviour
     {
         if (isDialogueActive && canAdvance && Input.GetKeyDown(KeyCode.E))
         {
-            if (typingCoroutine != null)
+            if (isTyping)
             {
-                StopCoroutine(typingCoroutine);
-                dialogueText.text = dialogueLines[currentLineIndex];
+                if (typingCoroutine != null)
+                    StopCoroutine(typingCoroutine);
+
+                dialogueText.text = currentLine;
+                isTyping = false;
                 typingCoroutine = null;
             }
             else
             {
-                currentLineIndex++;
-                if (currentLineIndex < dialogueLines.Length)
-                {
-                    StartTypingLine();
-                }
-                else
-                {
-                    StartCoroutine(EndDialogue());
-                }
+                StartCoroutine(EndDialogue());
             }
         }
     }
@@ -92,6 +99,9 @@ public class DialogueManager : MonoBehaviour
         yield return new WaitForSeconds(0.1f);
         dialoguePanel.SetActive(false);
         isDialogueActive = false;
+        currentLine = null;
+        isTyping = false;
+        canAdvance = false;
         typingCoroutine = null;
         PlayerMovement.Instance.canMove = true;
     }

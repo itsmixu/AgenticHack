@@ -16,6 +16,7 @@ public class PlayerInteraction : MonoBehaviour
     private Inventory inventory;
     private bool isInteractionActive;
     private bool isPlayerTurn;
+    private bool isAwaitingGiveItemSlot;
 
     public bool IsInteractionActive => isInteractionActive;
     public bool IsPlayerTurn => isPlayerTurn;
@@ -45,6 +46,12 @@ public class PlayerInteraction : MonoBehaviour
     {
         if (currentNPC == null || DialogueManager.Instance.isDialogueActive)
             return;
+
+        if (isInteractionActive && isPlayerTurn && isAwaitingGiveItemSlot)
+        {
+            HandleGiveItemSlotInput();
+            return;
+        }
 
         if (!isInteractionActive && Input.GetKeyDown(KeyCode.E))
         {
@@ -84,6 +91,8 @@ public class PlayerInteraction : MonoBehaviour
         {
             interactionPopupUI.Hide();
         }
+
+        isAwaitingGiveItemSlot = false;
     }
 
     public void SubmitTalk(string message)
@@ -142,6 +151,16 @@ public class PlayerInteraction : MonoBehaviour
         inventory.RemoveItem(itemToGive);
         NpcInteractionResponse localResponse = currentNPC.ProcessPlayerAction(PlayerActionType.GiveItem, null, itemToGive);
         StartCoroutine(ProcessNpcTurn(localResponse, requestStartTime));
+    }
+
+    public void BeginGiveItemSelection()
+    {
+        if (!CanAct())
+            return;
+
+        isAwaitingGiveItemSlot = true;
+        if (interactionPopupUI != null)
+            interactionPopupUI.BeginGiveItemSelectionPrompt();
     }
 
     public void SubmitHit()
@@ -324,6 +343,51 @@ public class PlayerInteraction : MonoBehaviour
         return isInteractionActive && isPlayerTurn && currentNPC != null;
     }
 
+    private void HandleGiveItemSlotInput()
+    {
+        int slotIndex = -1;
+
+        if (Input.GetKeyDown(KeyCode.Alpha1)) slotIndex = 0;
+        else if (Input.GetKeyDown(KeyCode.Alpha2)) slotIndex = 1;
+        else if (Input.GetKeyDown(KeyCode.Alpha3)) slotIndex = 2;
+        else if (Input.GetKeyDown(KeyCode.Alpha4)) slotIndex = 3;
+        else if (Input.GetKeyDown(KeyCode.Alpha5)) slotIndex = 4;
+
+        if (slotIndex < 0)
+            return;
+
+        if (inventory == null)
+        {
+            if (interactionPopupUI != null)
+                interactionPopupUI.SetStatus("Player inventory not found.");
+            return;
+        }
+
+        if (slotIndex >= inventory.items.Count || inventory.items[slotIndex] == null)
+        {
+            if (interactionPopupUI != null)
+                interactionPopupUI.SetStatus("No item in that slot. Press 1-5.");
+            return;
+        }
+
+        ItemData itemToGive = inventory.items[slotIndex];
+        inventory.RemoveItem(itemToGive);
+
+        isAwaitingGiveItemSlot = false;
+        if (interactionPopupUI != null)
+            interactionPopupUI.EndGiveItemSelectionPrompt();
+
+        float requestStartTime = Time.realtimeSinceStartup;
+        if (useBackendAI)
+        {
+            StartCoroutine(HandleBackendAction(PlayerActionType.GiveItem, null, itemToGive, requestStartTime));
+            return;
+        }
+
+        NpcInteractionResponse response = currentNPC.ProcessPlayerAction(PlayerActionType.GiveItem, null, itemToGive);
+        StartCoroutine(ProcessNpcTurn(response, requestStartTime));
+    }
+
     [System.Serializable]
     private class EventRequest
     {
@@ -363,8 +427,12 @@ public class PlayerInteraction : MonoBehaviour
     private System.Collections.IEnumerator ProcessNpcTurn(NpcInteractionResponse response, float requestStartTime)
     {
         isPlayerTurn = false;
+        isAwaitingGiveItemSlot = false;
         if (interactionPopupUI != null)
+        {
+            interactionPopupUI.EndGiveItemSelectionPrompt();
             interactionPopupUI.SetTurnState(false);
+        }
 
         if (response != null)
         {
