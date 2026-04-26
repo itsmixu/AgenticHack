@@ -4,6 +4,8 @@ EchoStream is middleware for persistent AI NPC memory in games.
 
 It sits between a game engine and an LLM, letting NPCs remember past interactions across sessions so they feel more alive and consistent.
 
+Supabase is used as the backend data layer for storing and syncing NPC state and memory.
+
 ## Repositories
 
 - Backend: [echostream-backend](https://github.com/rishu-8104/hack2026backend)
@@ -13,6 +15,7 @@ It sits between a game engine and an LLM, letting NPCs remember past interaction
 - Persistent NPC memory
 - Low-latency state retrieval
 - Cross-session continuity
+- Supabase-backed state storage
 - Middleware layer for agentic games
 
 ## Why it matters
